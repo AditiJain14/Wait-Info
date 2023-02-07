@@ -1,0 +1,8 @@
+checkpoints/
+build/
+data-bin/
+pyproject.toml
+outputs/
+logs/
+**__pycache__
+**linux-gnu.so
