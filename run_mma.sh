@@ -20,7 +20,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 # infinite lookback
 
 mma_il(){
-    CKPT="${EXPT}/checkpoints/infinite"
+    CKPT="${EXPT}/checkpoints/infinite_latencyloss"
     mkdir -p ${CKPT}
 
     fairseq-train \
@@ -28,11 +28,11 @@ mma_il(){
     --log-format simple --log-interval 100 \
     --source-lang de --target-lang en \
     --task translation \
-    --simul-type infinite_lookback \
-    --user-dir $FAIRSEQ \
+    --simul-type infinite_lookback --tensorboard-logdir $CKPT/log \
+    --user-dir $USR \
     --mass-preservation \
-    --criterion latency_augmented_label_smoothed_cross_entropy_pure \
     --latency-weight-avg  0.1 \
+    --criterion latency_augmented_label_smoothed_cross_entropy_pure \
     --max-update 50000 \
     --arch transformer_monotonic_iwslt_de_en --save-dir $CKPT \
     --optimizer adam --adam-betas '(0.9, 0.98)' \
@@ -41,8 +41,8 @@ mma_il(){
     --lr 5e-4 --min-lr 1e-9 --clip-norm 0.0 --weight-decay 0.0001\
     --dropout 0.3 \
     --label-smoothing 0.1\
-    --max-tokens 7000 \
-    --ddp-backend no_c10d
+    --max-tokens 5000 \
+    --ddp-backend no_c10d --max-epoch 50
 }
 
 # hard align
@@ -54,7 +54,7 @@ mma_h(){
     $DATA \
     --log-format simple --log-interval 100 \
     --source-lang de --target-lang en \
-    --task translation \
+    --task translation --tensorboard-logdir $CKPT/log \
     --simul-type hard_aligned \
     --user-dir $USR \
     --mass-preservation \
@@ -75,7 +75,7 @@ mma_h(){
 
 # monotnic wait k
 mma_wait_k(){
-    CKPT="${EXPT}/checkpoints/waitk"
+    CKPT="${EXPT}/checkpoints/waitk_latencyloss2"
     mkdir -p ${CKPT}
 
     fairseq-train \
@@ -87,7 +87,7 @@ mma_wait_k(){
     --waitk-lagging 3 \
     --user-dir $USR \
     --mass-preservation \
-    --criterion label_smoothed_cross_entropy \
+    --criterion latency_augmented_label_smoothed_cross_entropy_pure \
     --max-update 50000 \
     --arch transformer_monotonic_iwslt_de_en --save-dir $CKPT \
     --optimizer adam --adam-betas '(0.9, 0.98)' \
@@ -96,10 +96,10 @@ mma_wait_k(){
     --lr 5e-4 --min-lr 1e-9 --clip-norm 0.0 --weight-decay 0.0001\
     --dropout 0.3 \
     --label-smoothing 0.1\
-    --max-tokens 7000 \
-    --ddp-backend no_c10d --max-epoch 20
+    --max-tokens 5000 --update-freq 2 \
+    --ddp-backend no_c10d --max-epoch 50
 }
 
-# mma_il
+mma_il
 # mma_h
-mma_wait_k
+#mma_wait_k
