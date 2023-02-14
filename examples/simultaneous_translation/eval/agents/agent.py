@@ -38,8 +38,9 @@ class Agent(object):
             return
 
         t0 = time.time()
+        # sent_count=0
         if num_thread > 1:
-            with Pool(10) as p:
+            with Pool(num_thread) as p:
                 p.map(
                     partial(self._decode_one, session),
                     [sent_id for sent_id in range(low, high + 1)],
@@ -47,6 +48,14 @@ class Agent(object):
         else:
             for sent_id in range(low, high + 1):
                 self._decode_one(session, sent_id)
+                # sent_count+=1
+                # # interim scorer goes here
+                # if sent_count%100==0:
+                #     interim_scores = session.scorer.score_interim()
+                #     print("-- scores --")
+                #     print("Sentence count: {}".format(sent_count))
+                #     print("{}".format(interim_scores))
+                #     print("----")
 
         print(f"Finished {low} to {high} in {time.time() - t0}s")
 
@@ -64,4 +73,4 @@ class Agent(object):
 
             elif action["key"] == SEND:
                 session.send_hypo(sent_id, action["value"])
-        print(" ".join(states["tokens"]["tgt"]))
+        #print(" ".join(states["tokens"]["tgt"]))

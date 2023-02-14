@@ -47,6 +47,9 @@ def get_args():
     parser.add_argument(
         "--local", action="store_true", default=False, help="Local evaluation"
     )
+    parser.add_argument(
+        "--step-size", type=int, default=100, help="Write and update scores every x steps"
+    )
 
     args, _ = parser.parse_known_args()
 
@@ -74,8 +77,22 @@ if __name__ == "__main__":
 
     if args.agent_type is not None:
         agent = build_agent(args)
-        agent.decode(session, args.start_idx, args.end_idx, args.num_threads)
+
+        src_len = session.corpus_info()["num_sentences"]
+
+        interim_step = args.step_size
+        for i in range(0,src_len,interim_step):
+            start = i
+            end = i+interim_step
+            agent.decode(session, start, end, args.num_threads)
+            if args.scores:
+                print(session.get_scores())
+                if len(session.scorer.translations) > src_len:
+                    break
+
+
+        # agent.decode(session, args.start_idx, args.end_idx, args.num_threads)
 
     if args.scores:
-        session.get_scores()
-    print(session.get_scores())
+        print(session.get_scores())
+    # print(session.get_scores())

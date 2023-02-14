@@ -3,13 +3,24 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from . import DEFAULT_EOS, GET, register_agent
+import time
+from functools import partial
+import multiprocessing
+from multiprocessing.pool import ThreadPool as Pool
+
+from . import DEFAULT_EOS, GET, SEND, register_agent
 from .simul_trans_agent import SimulTransAgent
 from .word_splitter import SPLITTER_DICT
 
 
 @register_agent("simul_trans_text")
 class SimulTransTextAgent(SimulTransAgent):
+    # def __init__(self, args):
+    #     super().__init__(args)
+    #     # Whether use gpu
+
+        #
+
     def build_word_splitter(self, args):
         self.word_splitter = {}
 
@@ -24,6 +35,8 @@ class SimulTransTextAgent(SimulTransAgent):
         self.dict = {}
         self.dict["tgt"] = task.target_dictionary
         self.dict["src"] = task.source_dictionary
+        # for interim scores
+        self.sent_count = 0
 
     def update_states(self, states, new_state):
         if states["finish_read"]:
@@ -79,3 +92,6 @@ class SimulTransTextAgent(SimulTransAgent):
             states["finish_read"]
             and len(states["tokens"]["src"]) == states["steps"]["src"]
         )
+
+    
+       

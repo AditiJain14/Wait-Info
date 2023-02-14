@@ -16,19 +16,30 @@ class SimulTransAgent(Agent):
     def __init__(self, args):
         # Load Model
         self.load_model(args)
-
+    
         # build word spliter
         self.build_word_splitter(args)
 
         self.max_len = args.max_len
-
+        self.gpu=args.gpu
         self.eos = DEFAULT_EOS
+
+        # # for interim scores
+        # self.sent_count = 0
+    
+    def to_device(self, tensor):
+        # if self.gpu:
+        return tensor.cuda()
+        # else:
+            # return tensor.cpu()
 
     @staticmethod
     def add_args(parser):
         # fmt: off
         parser.add_argument('--model-path', type=str, required=True,
                             help='path to your pretrained model.')
+        parser.add_argument('--gpu', type=bool, default=True,
+                            help='Set False to not run on GPU, default True')
         parser.add_argument("--data-bin", type=str, required=True,
                             help="Path of data binary")
         parser.add_argument("--user-dir", type=str, default="example/simultaneous_translation",
@@ -63,7 +74,12 @@ class SimulTransAgent(Agent):
             filename, json.loads(args.model_overrides)
         )
 
-        saved_args = state["args"]
+        #import ipdb;ipdb.set_trace()
+
+        if state["args"] is None:
+            saved_args = state['cfg']['task']
+        else:
+            saved_args = state["args"]
         saved_args.data = args.data_bin
 
         task = tasks.setup_task(saved_args)
@@ -71,7 +87,9 @@ class SimulTransAgent(Agent):
         # build model for ensemble
         self.model = task.build_model(saved_args)
         self.model.load_state_dict(state["model"], strict=True)
-
+        #import ipdb; ipdb.set_trace()
+        #if self.gpu:
+        self.model.cuda()
         # Set dictionary
         self.load_dictionary(task)
 
@@ -118,7 +136,6 @@ class SimulTransAgent(Agent):
 
     def write_action(self, states):
         token, index = self.model.predict_from_states(states)
-
         if (
             index == self.dict["tgt"].eos()
             or len(states["tokens"]["tgt"]) > self.max_len

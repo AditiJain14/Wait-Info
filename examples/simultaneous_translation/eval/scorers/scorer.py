@@ -6,12 +6,16 @@
 import json
 import os
 from collections import defaultdict
+import logging
+import sys
+sys.stdout.flush()
 
 from examples.simultaneous_translation.eval.eval_latency import LatencyScorer
 from vizseq.scorers.bleu import BLEUScorer
 from vizseq.scorers.meteor import METEORScorer
 from vizseq.scorers.ter import TERScorer
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_EOS = "</s>"
 
@@ -30,6 +34,7 @@ class SimulScorer(object):
             self.output_files = None
         self.eos = DEFAULT_EOS
         self.data = {"tgt": []}
+        self.sentence_tracker = []
         self.reset()
 
     def get_info(self):
@@ -52,6 +57,16 @@ class SimulScorer(object):
         raise NotImplementedError
 
     def recv_hyp(self, sent_id, list_of_tokens):
+        # if sent_id not in self.sentence_tracker:
+        #     # add new sent_id to the tracker
+        #     self.sentence_tracker.append(sent_id)
+        #     if len(self.sentence_tracker) > 1:
+        #         sent_count = len(self.translations)
+        #         if float(sent_count)%float(10)==float(0.0):
+        #             print(self.score_interim(), flush=True)
+        #             # print("0-{} - {}".format(int(sent_count), self.score_interim()))
+        #             # logger.info("0-{} - {}".format(int(sent_count), self.score_interim()))
+        
         for token in list_of_tokens:
             self.translations[sent_id].append((token, self.steps[sent_id]))
 
@@ -61,6 +76,58 @@ class SimulScorer(object):
 
     def src_lengths(self):
         raise NotImplementedError
+
+    def score_interim(self):
+        translations = []
+        delays = []
+        for i in range(1 + max(self.translations.keys())):
+            translations += [" ".join(t[0] for t in self.translations[i][:-1])]
+            delays += [[t[1] for t in self.translations[i]]]
+
+        interim_len = len(translations) - 1
+        if interim_len > 0:
+            assert interim_len==len(delays[:interim_len]), "Interim length: Translations and delays have different sizes."
+            
+            bleu_score = BLEUScorer(
+                sent_level=False,
+                corpus_level=True,
+                extra_args={"bleu_tokenizer": self.tokenizer},
+            ).score(translations[:interim_len], [self.data["tgt"][:interim_len]])
+
+            latency_score = LatencyScorer().score(
+                [
+                    {"src_len": src_len, "delays": delay}
+                    for src_len, delay in zip(self.src_lengths()[:interim_len], delays[:interim_len])
+                ],
+                start_from_zero=False,
+            )
+
+            scores = {
+                "BLEU": bleu_score[0],
+                "DAL": latency_score["differentiable_average_lagging"],
+                "AL": latency_score["average_lagging"],
+                "AP": latency_score["average_proportion"],
+            }
+        
+        else:
+            scores = {
+                "BLEU": "none",
+                "DAL": "none",
+                "AL": "none",
+                "AP": "none",
+            }
+
+
+        if self.output_files is not None:
+            try:
+                os.makedirs(self.output_dir, exist_ok=True)
+                self.write_interim_results_to_file(translations, delays, scores, interim_len)
+            except BaseException as be:
+                print(f"Interim: Failed to write results to {self.output_dir}.")
+                print(be)
+                print("Interim: Skip writing predictions")
+
+        return scores
 
     def score(self):
         translations = []
@@ -73,27 +140,28 @@ class SimulScorer(object):
             sent_level=False,
             corpus_level=True,
             extra_args={"bleu_tokenizer": self.tokenizer},
-        ).score(translations, [self.data["tgt"]])
+        ).score(translations, [self.data["tgt"][:len(translations)]])
 
-        ter_score = TERScorer(sent_level=False, corpus_level=True).score(
-            translations, [self.data["tgt"]]
-        )
-        meteor_score = METEORScorer(sent_level=False, corpus_level=True).score(
-            translations, [self.data["tgt"]]
-        )
+        # ter_score = TERScorer(sent_level=False, corpus_level=True).score(
+        #     translations, [self.data["tgt"]]
+        # )
+        # meteor_score = METEORScorer(sent_level=False, corpus_level=True).score(
+        #     translations, [self.data["tgt"]]
+        # )
 
         latency_score = LatencyScorer().score(
             [
                 {"src_len": src_len, "delays": delay}
-                for src_len, delay in zip(self.src_lengths(), delays)
+                for src_len, delay in zip(self.src_lengths()[:len(translations)], delays[:len(translations)])
             ],
             start_from_zero=False,
         )
 
         scores = {
             "BLEU": bleu_score[0],
-            "TER": ter_score[0],
-            "METEOR": meteor_score[0],
+            "TER": 0,
+           # "METEOR": meteor_score[0],
+           "METEOR":0,
             "DAL": latency_score["differentiable_average_lagging"],
             "AL": latency_score["average_lagging"],
             "AP": latency_score["average_proportion"],
@@ -125,6 +193,26 @@ class SimulScorer(object):
                     )
 
         with open(self.output_files["scores"], "w") as f:
+            f.write(f"Interim Length: 0-{len(translations)}\n")
+            for key, value in scores.items():
+                f.write(f"{key}, {value}\n")
+
+    def write_interim_results_to_file(self, translations, delays, scores, interim_len):
+        if self.output_files["text"] is not None:
+            with open(self.output_files["text"]+"_interim", "w") as f:
+                for i, line in enumerate(translations[:interim_len]):
+                    f.write(str(i) + "-\t" + line + "\n")
+
+        if self.output_files["delay"] is not None:
+            with open(self.output_files["delay"]+"_interim", "w") as f:
+                for i, delay in enumerate(delays[:interim_len]):
+                    f.write(
+                        json.dumps({"src_len": self.src_lengths()[i], "delays": delay})
+                        + "\n"
+                    )
+
+        with open(self.output_files["scores"]+"_interim", "w") as f:
+            f.write(f"Interim Length: 0-{interim_len}\n")
             for key, value in scores.items():
                 f.write(f"{key}, {value}\n")
 
